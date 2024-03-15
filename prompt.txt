@@ -1,0 +1,1 @@
+Caption this image in a way that would work well as generative AI training data. The most prominent features should be mentioned first. Only print the generated caption. Don't surround it with quotes.
