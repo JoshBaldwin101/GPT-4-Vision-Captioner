@@ -1,7 +1,7 @@
 # GPT-4-Vision-Captioner
 GPT-4-Vision-Captioner is an innovative project leveraging the powerful capabilities of the new ChatGPT model, `gpt-4-vision-preview`. This tool is designed to analyze a batch of images and produce `.txt` or `.caption` files containing captions. These outputs are particularly structured to facilitate generative AI training, making this tool invaluable for developers in the AI field.
 
-This tool was designed to be used to create training data passed into the [Kohya_ss](https://github.com/bmaltais/kohya_ss) Stable Diffusion model trainer.
+This tool was designed to be used to create training data to be passed into the [Kohya_ss](https://github.com/bmaltais/kohya_ss) Stable Diffusion model trainer.
 
 ## Features
 - Batch processing of images for efficient caption generation
