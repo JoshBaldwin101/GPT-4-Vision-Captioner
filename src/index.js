@@ -14,6 +14,9 @@ const apiKey = process.env.OPENAI_API_KEY;
 
 // If the model that contains the vision tech changes, update it here.
 const modelWithVision = "gpt-4-vision-preview";
+// Rate limits - Find them here: https://platform.openai.com/account/limits
+const RATE_LIMIT_PER_MINUTE = 100000; // Maximum RPM
+const INTERVAL_BETWEEN_CALLS = 60000 / RATE_LIMIT_PER_MINUTE; // Time in ms
 
 // Path to the images folder
 const imagesFolderPath = "./images";
@@ -97,28 +100,92 @@ async function main() {
 
     console.log("Proceeding...");
 
-    // Loop over pathToImagesList and start making requests
-    for (let i = 0; i < pathToImagesList.length; i++) {
-      const fileName = getFileNameFromPath(pathToImagesList[i]);
-      const outputData = await queryOpenAIWithImage(
-        apiKey,
-        pathToImagesList[i],
-        prompt,
-        modelWithVision,
-        chosenFidelityLevel
-      );
-      console.log("outputData", outputData);
-      console.log("outputData.usage", outputData.usage);
-      const message = outputData.choices[0].message;
-      console.log("message", message);
-      return;
+    async function processImages() {
+      for (let i = 0; i < pathToImagesList.length; i++) {
+        if (i > 0) await delay(INTERVAL_BETWEEN_CALLS);
+        const filePath = pathToImagesList[i];
+        const fileName = getFileNameFromPath(filePath);
+        console.log("Attempting to query for " + fileName);
+        await attemptQueryWithRetry(
+          apiKey,
+          filePath,
+          prompt,
+          modelWithVision,
+          chosenFidelityLevel,
+          fileName,
+          3
+        );
+      }
     }
 
-    console.log("Done! Check the output folder.");
+    async function attemptQueryWithRetry(
+      apiKey,
+      filePath,
+      prompt,
+      model,
+      fidelity,
+      fileName,
+      retries,
+      attempt = 1
+    ) {
+      try {
+        const outputData = await queryOpenAIWithImage(
+          apiKey,
+          filePath,
+          prompt,
+          model,
+          fidelity
+        );
+        const message = outputData.choices[0].message;
+        const cleanedMessage = cleanMessage(message.content);
+        const fileFullPath = `${outputFolderPath}/${fileName}.${fileExt}`;
+        fs.writeFileSync(fileFullPath, cleanedMessage);
+      } catch (error) {
+        console.error(
+          `Attempt ${attempt} failed for: ${fileName}\nError:`,
+          error
+        );
+        if (attempt < retries) {
+          console.log(
+            `Retrying for ${fileName}... Attempt ${attempt + 1} of ${retries}`
+          );
+          await delay(INTERVAL_BETWEEN_CALLS); // Delay before retry, consider increasing this delay for exponential backoff
+          await attemptQueryWithRetry(
+            apiKey,
+            filePath,
+            prompt,
+            model,
+            fidelity,
+            fileName,
+            retries,
+            attempt + 1
+          );
+        } else {
+          console.log(`All retry attempts failed for: ${fileName}`);
+          // Handle the final failure case, maybe logging or flagging the file for manual review
+        }
+      }
+    }
+
+    processImages().then(() => console.log("Processing complete."));
   } catch (error) {
     console.error(`Error: ${error.message}`);
     return;
   }
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Escapes parentheses and double quotation marks in a given string by adding a backslash (\) before each of them.
+ *
+ * @param {string} message - The message to be cleaned.
+ * @returns {string} - The cleaned message with parentheses and double quotes escaped.
+ */
+function cleanMessage(message) {
+  return message.replace(/([()"])/g, "\\$1");
 }
 
 /**
@@ -132,7 +199,7 @@ async function main() {
  * getFileNameFromPath("./path/to/file1.txt");
  */
 function getFileNameFromPath(path) {
-  let fileName = path.split("/").pop(); // Get the last part after '/'
+  let fileName = path.split(/[/\\]/).pop(); // Use a regex to split by both '/' and '\'
   return fileName.split(".").slice(0, -1).join("."); // Remove the file extension
 }
 
