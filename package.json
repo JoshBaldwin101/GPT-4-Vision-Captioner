@@ -1,0 +1,33 @@
+{
+  "name": "gpt-4-vision-captioner",
+  "version": "1.0.0",
+  "description": "An image captioner using GPT-4 Vision.",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JoshBaldwin101/GPT-4-Vision-Captioner.git"
+  },
+  "keywords": [
+    "lora",
+    "training",
+    "captioner",
+    "gpt",
+    "chatgpt",
+    "gpt4"
+  ],
+  "author": "Josh Baldwin",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/JoshBaldwin101/GPT-4-Vision-Captioner/issues"
+  },
+  "homepage": "https://github.com/JoshBaldwin101/GPT-4-Vision-Captioner#readme",
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "inquirer": "^9.2.16",
+    "node-fetch": "^3.3.2"
+  }
+}
