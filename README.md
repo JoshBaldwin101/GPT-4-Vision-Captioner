@@ -44,9 +44,9 @@ Tag this image as if you were tagging it for booru with tags. For an image of a 
 To use GPT-4-Vision-Captioner, you'll need an API key from OpenAI:
 
 1. Visit [OpenAI](https://openai.com/) and create an account or log in.
-2. Navigate to the API section and ensure paid access. Note: Access to the `gpt-4-vision-preview` model (and other `gpt-4` models) requires adding at least $5 in credits.
+2. Navigate to the API section and generate an API key if one does not already exist.. Note: Access to the `gpt-4-vision-preview` model (and other `gpt-4` models) requires adding at least $5 in credits.
 3. Increase your API usage limit if you plan on conducting large batch processing.
-4. Copy the API key into the `.env` file as demonstrated in the setup section.
+4. Copy the API key into the `.env` file as demonstrated in the setup section. Do not add quotes or spaces.
 
 ## Contribution
 Contributions are very much welcome (no matter how small)! For major changes, please open an issue first to discuss what you would like to change.
