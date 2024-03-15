@@ -1,1 +1,1 @@
-Caption this image in a way that would work well as generative AI training data. The most prominent features should be mentioned first. Only print the generated caption. Don't surround it with quotes.
+This is an image of a funny and disturbing humor comic. Explain why it is funny to those who enjoy shock humor. You may also explain what is going on in the comic.
