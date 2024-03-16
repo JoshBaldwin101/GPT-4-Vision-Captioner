@@ -1,3 +1,9 @@
+# Content
+images/*
+!images/.gitkeep
+output/*
+!output/.gitkeep
+
 # Logs
 logs
 *.log
