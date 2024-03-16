@@ -1,5 +1,6 @@
     @echo off
-    npm install
+    call git pull
+    call npm install
     node src/index.js
     pause
     
