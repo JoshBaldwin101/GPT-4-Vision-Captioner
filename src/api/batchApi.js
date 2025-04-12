@@ -99,7 +99,8 @@ async function uploadBatchFile(apiKey, filePath) {
   });
   
   if (!response.ok) {
-    throw new Error(`Failed to upload batch file: ${response.statusText}`);
+    const errorData = await response.json();
+    throw new Error(`Failed to upload batch file: ${response.statusText}. Details: ${JSON.stringify(errorData)}`);
   }
   
   const data = await response.json();
@@ -127,7 +128,8 @@ export async function createBatch(apiKey, fileId) {
   });
   
   if (!response.ok) {
-    throw new Error(`Failed to create batch: ${response.statusText}`);
+    const errorData = await response.json();
+    throw new Error(`Failed to create batch: ${response.statusText}. Details: ${JSON.stringify(errorData)}`);
   }
   
   const data = await response.json();
@@ -150,7 +152,8 @@ export async function checkBatchStatus(apiKey, batchId) {
   });
   
   if (!response.ok) {
-    throw new Error(`Failed to check batch status: ${response.statusText}`);
+    const errorData = await response.json();
+    throw new Error(`Failed to check batch status: ${response.statusText}. Details: ${JSON.stringify(errorData)}`);
   }
   
   return await response.json();
@@ -171,7 +174,35 @@ export async function downloadBatchResults(apiKey, fileId) {
   });
   
   if (!response.ok) {
-    throw new Error(`Failed to download batch results: ${response.statusText}`);
+    const errorData = await response.json();
+    throw new Error(`Failed to download batch results: ${response.statusText}. Details: ${JSON.stringify(errorData)}`);
+  }
+  
+  const text = await response.text();
+  return text.split("\n").filter(Boolean).map(JSON.parse);
+}
+
+/**
+ * Downloads the error file of a failed batch job
+ * @param {string} apiKey - OpenAI API key
+ * @param {string} fileId - The file ID of the batch error file
+ * @returns {Promise<Array>} - The batch errors
+ */
+export async function downloadBatchErrors(apiKey, fileId) {
+  if (!fileId) {
+    return [];
+  }
+  
+  const response = await fetch(`https://api.openai.com/v1/files/${fileId}/content`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+  });
+  
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(`Failed to download batch errors: ${response.statusText}. Details: ${JSON.stringify(errorData)}`);
   }
   
   const text = await response.text();
@@ -198,62 +229,130 @@ export async function processBatchImages(
   outputFolderPath,
   fileExt
 ) {
-  console.log("Creating batch input file...");
-  const batchInputPath = path.join(outputFolderPath, "batch_input.jsonl");
-  const fileId = await createBatchInputFile(
-    apiKey,
-    imagePaths,
-    prompt,
-    modelId,
-    fidelity,
-    batchInputPath
-  );
+  // Calculate file sizes and estimate batch sizes
+  const MAX_BATCH_SIZE_BYTES = 180 * 1024 * 1024; // 180MB (leaving some buffer below the 200MB limit)
+  const batches = [];
+  let currentBatch = [];
+  let currentBatchSize = 0;
   
-  console.log("Creating batch job...");
-  const batchId = await createBatch(apiKey, fileId);
-  console.log(`Batch job created with ID: ${batchId}`);
-  
-  console.log("Waiting for batch job to complete...");
-  let batchStatus;
-  do {
-    batchStatus = await checkBatchStatus(apiKey, batchId);
-    console.log(`Batch status: ${batchStatus.status}`);
+  // First pass: estimate sizes and create batches
+  for (const imagePath of imagePaths) {
+    const stats = fs.statSync(imagePath);
+    const fileSize = stats.size;
     
-    if (batchStatus.status === "failed") {
-      throw new Error("Batch job failed");
+    // Estimate the size after base64 encoding (adds ~33% overhead)
+    const estimatedEncodedSize = fileSize * 1.33;
+    
+    // If adding this image would exceed the limit, start a new batch
+    if (currentBatchSize + estimatedEncodedSize > MAX_BATCH_SIZE_BYTES && currentBatch.length > 0) {
+      batches.push([...currentBatch]);
+      currentBatch = [imagePath];
+      currentBatchSize = estimatedEncodedSize;
+    } else {
+      currentBatch.push(imagePath);
+      currentBatchSize += estimatedEncodedSize;
     }
-    
-    if (batchStatus.status === "expired") {
-      throw new Error("Batch job expired");
-    }
-    
-    if (batchStatus.status === "completed") {
-      break;
-    }
-    
-    // Wait for 30 seconds before checking again
-    await new Promise((resolve) => setTimeout(resolve, 30000));
-  } while (batchStatus.status !== "completed");
-  
-  console.log("Batch job completed. Downloading results...");
-  const results = await downloadBatchResults(apiKey, batchStatus.output_file_id);
-  
-  console.log("Processing results...");
-  for (const result of results) {
-    if (result.error) {
-      console.error(`Error processing ${result.custom_id}: ${result.error.message}`);
-      continue;
-    }
-    
-    const fileName = result.custom_id;
-    const message = result.response.body.choices[0].message;
-    const cleanedMessage = cleanMessage(message.content);
-    const fileFullPath = `${outputFolderPath}/${fileName}.${fileExt}`;
-    fs.writeFileSync(fileFullPath, cleanedMessage);
-    console.log(`Processed ${fileName}`);
   }
   
-  console.log("Batch processing complete.");
+  // Add the last batch if it has any images
+  if (currentBatch.length > 0) {
+    batches.push(currentBatch);
+  }
+  
+  console.log(`Split ${imagePaths.length} images into ${batches.length} batches based on file sizes`);
+  console.log(`Maximum batch size set to ${MAX_BATCH_SIZE_BYTES / (1024 * 1024)}MB`);
+  
+  // Process each batch
+  for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+    const batchImages = batches[batchIndex];
+    console.log(`Processing batch ${batchIndex + 1}/${batches.length} with ${batchImages.length} images...`);
+    
+    // Create a batch input file for this batch
+    const batchInputPath = path.join(outputFolderPath, `batch_input_${batchIndex + 1}.jsonl`);
+    const fileId = await createBatchInputFile(
+      apiKey,
+      batchImages,
+      prompt,
+      modelId,
+      fidelity,
+      batchInputPath
+    );
+    
+    console.log(`Created batch input file for batch ${batchIndex + 1}`);
+    
+    // Create a batch job
+    const batchId = await createBatch(apiKey, fileId);
+    console.log(`Batch ${batchIndex + 1} job created with ID: ${batchId}`);
+    
+    // Wait for the batch job to complete
+    console.log(`Waiting for batch ${batchIndex + 1} to complete...`);
+    let batchStatus;
+    do {
+      batchStatus = await checkBatchStatus(apiKey, batchId);
+      console.log(`Batch ${batchIndex + 1} status: ${batchStatus.status}`);
+      
+      if (batchStatus.status === "failed") {
+        console.error(`Batch ${batchIndex + 1} failed. Retrieving error details...`);
+        if (batchStatus.error_file_id) {
+          try {
+            const errors = await downloadBatchErrors(apiKey, batchStatus.error_file_id);
+            console.error(`Batch ${batchIndex + 1} errors:`);
+            errors.forEach(error => {
+              console.error(`- ${error.custom_id}: ${error.error.message}`);
+            });
+          } catch (error) {
+            console.error(`Failed to retrieve error details: ${error.message}`);
+          }
+        }
+        throw new Error(`Batch ${batchIndex + 1} failed. Status: ${batchStatus.status}`);
+      }
+      
+      if (batchStatus.status === "expired") {
+        console.error(`Batch ${batchIndex + 1} expired. Retrieving error details...`);
+        if (batchStatus.error_file_id) {
+          try {
+            const errors = await downloadBatchErrors(apiKey, batchStatus.error_file_id);
+            console.error(`Batch ${batchIndex + 1} errors:`);
+            errors.forEach(error => {
+              console.error(`- ${error.custom_id}: ${error.error.message}`);
+            });
+          } catch (error) {
+            console.error(`Failed to retrieve error details: ${error.message}`);
+          }
+        }
+        throw new Error(`Batch ${batchIndex + 1} expired. Status: ${batchStatus.status}`);
+      }
+      
+      if (batchStatus.status === "completed") {
+        break;
+      }
+      
+      // Wait for 30 seconds before checking again
+      await new Promise((resolve) => setTimeout(resolve, 30000));
+    } while (batchStatus.status !== "completed");
+    
+    console.log(`Batch ${batchIndex + 1} completed. Downloading results...`);
+    const results = await downloadBatchResults(apiKey, batchStatus.output_file_id);
+    
+    console.log(`Processing results for batch ${batchIndex + 1}...`);
+    for (const result of results) {
+      if (result.error) {
+        console.error(`Error processing ${result.custom_id}: ${result.error.message}`);
+        continue;
+      }
+      
+      const fileName = result.custom_id;
+      const message = result.response.body.choices[0].message;
+      const cleanedMessage = cleanMessage(message.content);
+      const fileFullPath = `${outputFolderPath}/${fileName}.${fileExt}`;
+      fs.writeFileSync(fileFullPath, cleanedMessage);
+      console.log(`Processed ${fileName}`);
+    }
+    
+    console.log(`Batch ${batchIndex + 1} processing complete.`);
+  }
+  
+  console.log("All batches processed successfully.");
 }
 
 /**
@@ -264,4 +363,4 @@ export async function processBatchImages(
  */
 function cleanMessage(message) {
   return message.replace(/([()"])/g, "\\$1");
-} 
+}
