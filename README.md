@@ -57,6 +57,42 @@ Tag this image as if you were tagging it for booru with tags. For an image of a 
 - Higher rate limits
 - Ideal for large datasets
 
+## Batch Processing Details
+
+The new batch processing feature uses OpenAI's Batch API to process multiple images at once. This approach offers several advantages:
+
+### Benefits
+- **Cost Efficiency**: The Batch API offers a 50% cost discount compared to synchronous APIs.
+- **Higher Rate Limits**: The Batch API has substantially higher rate limits compared to the synchronous APIs.
+- **Scalability**: The Batch API can handle up to 50,000 requests in a single batch, making it ideal for large datasets.
+
+### How It Works
+1. The tool creates a JSONL file containing all your image requests
+2. This file is uploaded to OpenAI
+3. A batch job is created to process all the images
+4. The tool monitors the status of the batch job
+5. Once the batch job is complete, the results are downloaded and processed
+6. The captions are saved to your output folder
+
+### Batch Job Status
+The batch job can have the following statuses:
+- **validating**: The input file is being validated
+- **failed**: The input file has failed validation
+- **in_progress**: The batch is currently being processed
+- **finalizing**: The batch has completed and results are being prepared
+- **completed**: The batch has been completed and results are ready
+- **expired**: The batch was not completed within the 24-hour time window
+- **cancelling**: The batch is being cancelled
+- **cancelled**: The batch was cancelled
+
+### Testing the Batch Feature
+To test the batch processing feature:
+1. Place images in the `images` folder
+2. Run the application
+3. Choose batch processing when prompted
+4. Monitor the console output to see the progress. Do NOT close out the window.
+5. The application will show you the batch job ID, which you can use to track the status
+
 ## How to Get an OpenAI API Key
 To use GPT-4-Vision-Captioner, you'll need an API key from OpenAI:
 
