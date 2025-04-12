@@ -8,6 +8,7 @@ This tool was designed to be used to create training data to be passed into the 
 - Output suitable for generative AI training data in `.txt` or `.caption` formats
 - Custom prompt flexibility via a simple `prompt.txt` setup
 - Easy to use with minimal setup requirements
+- **NEW**: OpenAI Batch API support for 50% lower costs and higher rate limits
 
 ## Getting Started
 
@@ -38,7 +39,23 @@ Tag this image as if you were tagging it for booru with tags. For an image of a 
 ### Running the Tool
 1. Launch the `start_captioner.bat` file. This will automatically handle dependencies.
 2. Follow the prompts in the console window to customize your output settings (`txt` or `caption` file extension, fidelity level of image understanding, etc.).
-3. Confirm the terms regarding cost and OpenAI's terms of service by typing y when prompted.
+3. Choose whether to use batch processing (recommended for large datasets) or synchronous processing.
+4. Confirm the terms regarding cost and OpenAI's terms of service by typing y when prompted.
+
+## Processing Modes
+
+### Synchronous Processing
+- Processes images one at a time
+- Results are available immediately
+- Higher cost per image
+- Subject to standard rate limits
+
+### Batch Processing (NEW)
+- Processes all images in a single batch
+- Results may take up to 24 hours to complete
+- 50% lower cost per image
+- Higher rate limits
+- Ideal for large datasets
 
 ## How to Get an OpenAI API Key
 To use GPT-4-Vision-Captioner, you'll need an API key from OpenAI:

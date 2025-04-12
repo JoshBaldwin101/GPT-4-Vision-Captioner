@@ -6,6 +6,7 @@ import readline from "readline";
 import dotenv from "dotenv";
 import inquirer from "inquirer";
 import { queryOpenAIWithImage } from "./api/visionApi.js";
+import { processBatchImages } from "./api/batchApi.js";
 
 dotenv.config();
 
@@ -13,7 +14,7 @@ dotenv.config();
 const apiKey = process.env.OPENAI_API_KEY;
 
 // If the model that contains the vision tech changes, update it here.
-const modelWithVision = "gpt-4-vision-preview";
+const modelWithVision = "gpt-4o";
 // Rate limits - Find them here: https://platform.openai.com/account/limits
 const RATE_LIMIT_PER_MINUTE = 100000; // Maximum RPM
 const INTERVAL_BETWEEN_CALLS = 60000 / RATE_LIMIT_PER_MINUTE; // Time in ms
@@ -91,86 +92,136 @@ async function main() {
 
     const pathToImagesList = await getListOfPathToImages(imagesFolderPath);
 
-    const costConfirmation = (await askAgreementQuestion()).answer;
+    // Ask the user if they want to use batch processing
+    const useBatchProcessing = (await askBatchProcessingQuestion()).answer;
 
-    if (!costConfirmation) {
-      console.log("Aborted.");
-      return;
-    }
+    if (useBatchProcessing) {
+      console.log("Using batch processing mode...");
+      const costConfirmation = (await askAgreementQuestion()).answer;
 
-    console.log("Proceeding...");
-
-    async function processImages() {
-      for (let i = 0; i < pathToImagesList.length; i++) {
-        if (i > 0) await delay(INTERVAL_BETWEEN_CALLS);
-        const filePath = pathToImagesList[i];
-        const fileName = getFileNameFromPath(filePath);
-        console.log("Attempting to query for " + fileName);
-        await attemptQueryWithRetry(
-          apiKey,
-          filePath,
-          prompt,
-          modelWithVision,
-          chosenFidelityLevel,
-          fileName,
-          3
-        );
+      if (!costConfirmation) {
+        console.log("Aborted.");
+        return;
       }
-    }
 
-    async function attemptQueryWithRetry(
+      console.log("Proceeding with batch processing...");
+      await processBatchImages(
+        apiKey,
+        pathToImagesList,
+        prompt,
+        modelWithVision,
+        chosenFidelityLevel,
+        outputFolderPath,
+        fileExt
+      );
+    } else {
+      console.log("Using synchronous processing mode...");
+      const costConfirmation = (await askAgreementQuestion()).answer;
+
+      if (!costConfirmation) {
+        console.log("Aborted.");
+        return;
+      }
+
+      console.log("Proceeding with synchronous processing...");
+      await processImagesSynchronously(
+        apiKey,
+        pathToImagesList,
+        prompt,
+        modelWithVision,
+        chosenFidelityLevel,
+        outputFolderPath,
+        fileExt
+      );
+    }
+  } catch (error) {
+    console.error(`Error: ${error.message}`);
+    return;
+  }
+}
+
+/**
+ * Process images synchronously (original method)
+ */
+async function processImagesSynchronously(
+  apiKey,
+  pathToImagesList,
+  prompt,
+  modelWithVision,
+  chosenFidelityLevel,
+  outputFolderPath,
+  fileExt
+) {
+  for (let i = 0; i < pathToImagesList.length; i++) {
+    if (i > 0) await delay(INTERVAL_BETWEEN_CALLS);
+    const filePath = pathToImagesList[i];
+    const fileName = getFileNameFromPath(filePath);
+    console.log("Attempting to query for " + fileName);
+    await attemptQueryWithRetry(
+      apiKey,
+      filePath,
+      prompt,
+      modelWithVision,
+      chosenFidelityLevel,
+      fileName,
+      outputFolderPath,
+      fileExt,
+      3
+    );
+  }
+  console.log("Processing complete.");
+}
+
+async function attemptQueryWithRetry(
+  apiKey,
+  filePath,
+  prompt,
+  model,
+  fidelity,
+  fileName,
+  outputFolderPath,
+  fileExt,
+  retries,
+  attempt = 1
+) {
+  try {
+    const outputData = await queryOpenAIWithImage(
       apiKey,
       filePath,
       prompt,
       model,
-      fidelity,
-      fileName,
-      retries,
-      attempt = 1
-    ) {
-      try {
-        const outputData = await queryOpenAIWithImage(
-          apiKey,
-          filePath,
-          prompt,
-          model,
-          fidelity
-        );
-        const message = outputData.choices[0].message;
-        const cleanedMessage = cleanMessage(message.content);
-        const fileFullPath = `${outputFolderPath}/${fileName}.${fileExt}`;
-        fs.writeFileSync(fileFullPath, cleanedMessage);
-      } catch (error) {
-        console.error(
-          `Attempt ${attempt} failed for: ${fileName}\nError:`,
-          error
-        );
-        if (attempt < retries) {
-          console.log(
-            `Retrying for ${fileName}... Attempt ${attempt + 1} of ${retries}`
-          );
-          await delay(INTERVAL_BETWEEN_CALLS); // Delay before retry, consider increasing this delay for exponential backoff
-          await attemptQueryWithRetry(
-            apiKey,
-            filePath,
-            prompt,
-            model,
-            fidelity,
-            fileName,
-            retries,
-            attempt + 1
-          );
-        } else {
-          console.log(`All retry attempts failed for: ${fileName}`);
-          // Handle the final failure case, maybe logging or flagging the file for manual review
-        }
-      }
-    }
-
-    processImages().then(() => console.log("Processing complete."));
+      fidelity
+    );
+    const message = outputData.choices[0].message;
+    const cleanedMessage = cleanMessage(message.content);
+    const fileFullPath = `${outputFolderPath}/${fileName}.${fileExt}`;
+    fs.writeFileSync(fileFullPath, cleanedMessage);
   } catch (error) {
-    console.error(`Error: ${error.message}`);
-    return;
+    console.error(
+      `Attempt ${attempt} failed for: ${fileName}\nError:`,
+      error
+    );
+    if (attempt < retries) {
+      console.log(
+        `Retrying for ${fileName}... Attempt ${attempt + 1} of ${retries}`
+      );
+      await delay(INTERVAL_BETWEEN_CALLS); // Delay before retry, consider increasing this delay for exponential backoff
+      await attemptQueryWithRetry(
+        apiKey,
+        filePath,
+        prompt,
+        model,
+        fidelity,
+        fileName,
+        outputFolderPath,
+        fileExt,
+        retries,
+        attempt + 1
+      );
+    } else {
+      console.log(`All retry attempts failed for: ${fileName}`);
+      // Handle the final failure case, maybe logging or flagging the file for manual review
+    }
   }
 }
 
@@ -295,6 +346,21 @@ async function askLowOrHighFidelityQuestion() {
         "\nHigh = high image understanding, very high token usage" +
         "\nAuto = OpenAI will decide",
       choices: ["low", "high", "auto"],
+    },
+  ];
+
+  const answer = await inquirer.prompt(question);
+  return answer;
+}
+
+async function askBatchProcessingQuestion() {
+  const question = [
+    {
+      type: "confirm",
+      name: "answer",
+      message:
+        "Would you like to use batch processing? This is 50% cheaper and has higher rate limits, but results may take up to 24 hours to complete.",
+      default: true,
     },
   ];
 
