@@ -341,12 +341,15 @@ export async function processBatchImages(
         continue;
       }
       
-      const fileName = result.custom_id;
+      // Extract just the base name without extension
+      const fullFileName = result.custom_id;
+      const baseFileName = path.parse(fullFileName).name;
+      
       const message = result.response.body.choices[0].message;
       const cleanedMessage = cleanMessage(message.content);
-      const fileFullPath = `${outputFolderPath}/${fileName}.${fileExt}`;
+      const fileFullPath = `${outputFolderPath}/${baseFileName}.${fileExt}`;
       fs.writeFileSync(fileFullPath, cleanedMessage);
-      console.log(`Processed ${fileName}`);
+      console.log(`Processed ${baseFileName}`);
     }
     
     console.log(`Batch ${batchIndex + 1} processing complete.`);
